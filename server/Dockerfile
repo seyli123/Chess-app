@@ -2,6 +2,11 @@
 FROM node:20-alpine AS base
 WORKDIR /app
 
+# Prisma's query/schema engines are dynamically linked against OpenSSL and the
+# GNU libc compat shim. The Alpine base image ships neither, which produces
+# "Please manually install OpenSSL" / "Could not parse schema engine response".
+RUN apk add --no-cache openssl libc6-compat
+
 # Workspace manifests
 COPY package.json package-lock.json* ./
 COPY packages/shared/package.json packages/shared/
