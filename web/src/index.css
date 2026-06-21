@@ -1,0 +1,17 @@
+/* chessground board + piece styles (must precede @tailwind per CSS @import rules) */
+@import 'chessground/assets/chessground.base.css';
+@import 'chessground/assets/chessground.brown.css';
+@import 'chessground/assets/chessground.cburnett.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-slate-900 text-slate-100;
+}
+
+.cg-wrap {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}

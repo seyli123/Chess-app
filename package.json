@@ -1,0 +1,16 @@
+{
+  "name": "chess-app",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Real-time chess platform (play-money edition)",
+  "workspaces": [
+    "packages/*",
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "build:shared": "npm run build -w @chess/shared",
+    "dev:server": "npm run start:dev -w server",
+    "dev:web": "npm run dev -w web"
+  }
+}

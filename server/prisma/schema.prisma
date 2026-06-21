@@ -1,0 +1,242 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------- Auth & Users ----------------
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  username     String   @unique
+  passwordHash String? // null if OAuth-only
+  role         Role     @default(USER)
+  createdAt    DateTime @default(now())
+
+  wallet            Wallet?
+  oauthAccounts     OAuthAccount[]
+  refreshTokens     RefreshToken[]
+  ratings           Rating[]
+  whiteGames        Game[]             @relation("white")
+  blackGames        Game[]             @relation("black")
+  tournamentPlayers TournamentPlayer[]
+}
+
+enum Role {
+  USER
+  ADMIN
+  SYSTEM
+}
+
+model OAuthAccount {
+  id         String @id @default(cuid())
+  userId     String
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider   String // "google"
+  providerId String
+
+  @@unique([provider, providerId])
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+}
+
+// ---------------- Rating (Glicko-2) ----------------
+model Rating {
+  id          String       @id @default(cuid())
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category    TimeCategory
+  rating      Float        @default(1500)
+  deviation   Float        @default(350) // RD
+  volatility  Float        @default(0.06)
+  gamesPlayed Int          @default(0)
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([userId, category])
+}
+
+enum TimeCategory {
+  BULLET
+  BLITZ
+  RAPID
+}
+
+// ---------------- Game ----------------
+model Game {
+  id           String       @id @default(cuid())
+  whiteId      String
+  white        User         @relation("white", fields: [whiteId], references: [id])
+  blackId      String
+  black        User         @relation("black", fields: [blackId], references: [id])
+  category     TimeCategory
+  initialSec   Int
+  incrementSec Int
+  rated        Boolean      @default(true)
+  status       GameStatus   @default(ACTIVE)
+  result       GameResult?
+  termination  Termination?
+  fen          String
+  pgn          String       @default("")
+  wagerAmount  BigInt       @default(0)
+  startedAt    DateTime     @default(now())
+  endedAt      DateTime?
+
+  moves  Move[]
+  escrow Escrow?
+
+  @@index([status])
+  @@index([whiteId])
+  @@index([blackId])
+}
+
+enum GameStatus {
+  ACTIVE
+  FINISHED
+  ABORTED
+}
+
+enum GameResult {
+  WHITE_WINS
+  BLACK_WINS
+  DRAW
+}
+
+enum Termination {
+  CHECKMATE
+  RESIGN
+  TIMEOUT
+  STALEMATE
+  THREEFOLD
+  FIFTY_MOVE
+  INSUFFICIENT
+  DRAW_AGREED
+  ABORTED
+}
+
+model Move {
+  id           String @id @default(cuid())
+  gameId       String
+  game         Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  ply          Int
+  san          String
+  uci          String
+  fenAfter     String
+  clockMsWhite Int
+  clockMsBlack Int
+
+  @@unique([gameId, ply])
+}
+
+// ---------------- Tournaments (Arena) ----------------
+model Tournament {
+  id           String           @id @default(cuid())
+  name         String
+  category     TimeCategory
+  initialSec   Int
+  incrementSec Int
+  buyIn        BigInt           @default(0)
+  startsAt     DateTime
+  durationMin  Int
+  status       TournamentStatus @default(SCHEDULED)
+
+  players TournamentPlayer[]
+}
+
+enum TournamentStatus {
+  SCHEDULED
+  RUNNING
+  FINISHED
+}
+
+model TournamentPlayer {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id])
+  score        Int        @default(0)
+  performance  Int        @default(0)
+
+  @@unique([tournamentId, userId])
+}
+
+// ---------------- Wallet & Double-Entry Ledger (reserved) ----------------
+model Wallet {
+  id       String     @id @default(cuid())
+  userId   String?    @unique // null for system accounts
+  user     User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type     WalletType @default(USER)
+  balance  BigInt     @default(0) // cached; reconcilable from entries
+  currency String     @default("TOKEN")
+
+  entries LedgerEntry[]
+}
+
+enum WalletType {
+  USER
+  HOUSE
+  MINT // faucet / signup-grant / admin-grant source
+  ESCROW
+}
+
+model LedgerTransaction {
+  id        String       @id @default(cuid())
+  type      LedgerTxType
+  refType   String? // "game" | "tournament" | "escrow"
+  refId     String?
+  createdAt DateTime     @default(now())
+
+  entries LedgerEntry[]
+}
+
+enum LedgerTxType {
+  SIGNUP_GRANT
+  FAUCET
+  ESCROW_LOCK
+  PAYOUT
+  FEE
+  REFUND
+  ADMIN_GRANT
+}
+
+model LedgerEntry {
+  id            String            @id @default(cuid())
+  transactionId String
+  transaction   LedgerTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  walletId      String
+  wallet        Wallet            @relation(fields: [walletId], references: [id])
+  amount        BigInt // +credit / -debit; SUM per transaction = 0
+  createdAt     DateTime          @default(now())
+
+  @@index([walletId])
+  @@index([transactionId])
+}
+
+model Escrow {
+  id         String       @id @default(cuid())
+  gameId     String       @unique
+  game       Game         @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  whiteStake BigInt
+  blackStake BigInt
+  feeBps     Int // fee in basis points, snapshot at creation
+  status     EscrowStatus @default(LOCKED)
+  createdAt  DateTime     @default(now())
+  settledAt  DateTime?
+}
+
+enum EscrowStatus {
+  LOCKED
+  SETTLED
+  REFUNDED
+}
