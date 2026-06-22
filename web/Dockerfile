@@ -1,5 +1,8 @@
 # Build from repo root: docker build -f web/Dockerfile .
-FROM node:20-alpine
+# Debian base (matching the API image) so the build output never references
+# node:20-alpine. The web service doesn't use Prisma, so the base is cosmetic
+# here, but keeping both images on Debian avoids confusion.
+FROM node:20-bookworm-slim
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
