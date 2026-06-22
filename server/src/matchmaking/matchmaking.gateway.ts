@@ -14,7 +14,7 @@ import { MatchmakingService } from './matchmaking.service';
 
 @WebSocketGateway({
   namespace: '/matchmaking',
-  cors: { origin: config.webOrigin, credentials: true },
+  cors: { origin: config.corsOrigin, credentials: true },
 })
 export class MatchmakingGateway implements OnGatewayConnection, OnGatewayDisconnect {
   /** userId -> connected socket (single-instance routing for match notices). */

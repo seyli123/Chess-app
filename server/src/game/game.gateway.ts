@@ -12,7 +12,7 @@ import { config } from '../config/config';
 import { AuthService } from '../auth/auth.service';
 import { GameManager } from './game-manager';
 
-@WebSocketGateway({ namespace: '/game', cors: { origin: config.webOrigin, credentials: true } })
+@WebSocketGateway({ namespace: '/game', cors: { origin: config.corsOrigin, credentials: true } })
 export class GameGateway implements OnGatewayInit, OnGatewayConnection {
   constructor(
     private readonly manager: GameManager,

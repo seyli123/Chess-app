@@ -1,4 +1,32 @@
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+/**
+ * Resolve the API base URL.
+ *
+ * 1. An explicit VITE_API_URL always wins (set it for custom deployments).
+ * 2. Otherwise derive it from the browser location so it works without config:
+ *    - GitHub Codespaces / port-forwarding hosts look like
+ *      `<name>-5173.app.github.dev`; the API is the same host with `-3000`.
+ *    - Plain localhost / LAN dev: same host, API on port 3000.
+ * 3. Fall back to localhost:3000 (SSR / non-browser contexts).
+ */
+function resolveApiUrl(): string {
+  const fromEnv = import.meta.env.VITE_API_URL;
+  if (fromEnv) return fromEnv.replace(/\/$/, '');
+
+  if (typeof window !== 'undefined') {
+    const { protocol, hostname, port } = window.location;
+    // Codespaces and most cloud port-forwarders encode the port in the subdomain.
+    if (hostname.includes('-5173.')) {
+      return `${protocol}//${hostname.replace('-5173.', '-3000.')}`;
+    }
+    // localhost / LAN: swap the dev-server port for the API port.
+    if (port === '5173') {
+      return `${protocol}//${hostname}:3000`;
+    }
+  }
+  return 'http://localhost:3000';
+}
+
+const API_URL = resolveApiUrl();
 
 const ACCESS_KEY = 'chess.access';
 const REFRESH_KEY = 'chess.refresh';

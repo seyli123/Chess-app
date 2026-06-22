@@ -37,7 +37,9 @@ services:
       ACCESS_TTL: "15m"
       REFRESH_TTL: "30d"
       PORT: "3000"
-      WEB_ORIGIN: "http://localhost:5173"
+      # Leave WEB_ORIGIN unset so CORS reflects the request origin — this lets
+      # dynamic hosts (GitHub Codespaces forwarded URLs) work without config.
+      # Set it to a fixed domain for production.
       SIGNUP_GRANT: "1000"
       PLATFORM_FEE_BPS: "10"
     ports:
@@ -52,8 +54,9 @@ services:
     build:
       context: .
       dockerfile: web/Dockerfile
-    environment:
-      VITE_API_URL: "http://localhost:3000"
+    # No VITE_API_URL: the client auto-derives the API URL from the browser
+    # location (works on localhost and Codespaces). Set VITE_API_URL only to
+    # pin a custom API endpoint.
     ports:
       - "5173:5173"
     depends_on:
