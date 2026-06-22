@@ -6,5 +6,9 @@ export function connect(namespace: '/game' | '/matchmaking'): Socket {
     transports: ['websocket'],
     auth: { token: tokens.access },
     autoConnect: true,
+    // forceNew so each page mount gets its own connection instead of reusing a
+    // cached, previously-disconnected socket. That cached-reuse left stale
+    // sockets around between games and broke re-queuing.
+    forceNew: true,
   });
 }

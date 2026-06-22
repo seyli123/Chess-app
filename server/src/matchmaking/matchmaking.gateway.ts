@@ -34,7 +34,12 @@ export class MatchmakingGateway implements OnGatewayConnection, OnGatewayDisconn
     try {
       const userId = await this.auth.verifyAccess(token);
       socket.data.userId = userId;
+      // Supersede any previous socket for this user. Register the new one first
+      // so the old socket's disconnect handler sees it is no longer current and
+      // skips cleanup (preserving this fresh session's state).
+      const previous = this.sockets.get(userId);
       this.sockets.set(userId, socket);
+      if (previous && previous !== socket) previous.disconnect();
     } catch {
       socket.disconnect();
     }
@@ -42,7 +47,12 @@ export class MatchmakingGateway implements OnGatewayConnection, OnGatewayDisconn
 
   async handleDisconnect(socket: Socket) {
     const userId = socket.data.userId as string | undefined;
-    if (userId) {
+    if (!userId) return;
+    // Only clean up if THIS socket is still the user's current one. A late
+    // disconnect from a previous/replaced socket (page transition, socket reuse,
+    // or StrictMode remount) must not wipe the new session's queue entry and
+    // routing — that is what left players stuck "searching" on a second game.
+    if (this.sockets.get(userId) === socket) {
       this.sockets.delete(userId);
       await this.mm.leave(userId);
     }
