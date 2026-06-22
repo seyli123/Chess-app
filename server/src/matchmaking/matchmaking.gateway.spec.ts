@@ -11,11 +11,11 @@ function fakeSocket(token: string) {
 
 describe('MatchmakingGateway cleanup', () => {
   const auth = { verifyAccess: jest.fn(async () => 'user1') } as any;
-  let mm: { join: jest.Mock; leave: jest.Mock };
+  let mm: { enqueue: jest.Mock; tryPair: jest.Mock; leave: jest.Mock };
   let gateway: MatchmakingGateway;
 
   beforeEach(() => {
-    mm = { join: jest.fn(), leave: jest.fn() };
+    mm = { enqueue: jest.fn(), tryPair: jest.fn(async () => []), leave: jest.fn() };
     gateway = new MatchmakingGateway(mm as any, auth);
   });
 

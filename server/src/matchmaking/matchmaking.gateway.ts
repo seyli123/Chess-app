@@ -3,27 +3,64 @@ import {
   SubscribeMessage,
   MessageBody,
   ConnectedSocket,
+  OnGatewayInit,
   OnGatewayConnection,
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
+import { OnModuleDestroy } from '@nestjs/common';
 import type { Socket } from 'socket.io';
-import { MM_EVENTS, type MmJoinPayload } from '@chess/shared';
+import { MM_EVENTS, TIME_CONTROL_BY_ID, type MmJoinPayload } from '@chess/shared';
 import { config } from '../config/config';
 import { AuthService } from '../auth/auth.service';
-import { MatchmakingService } from './matchmaking.service';
+import { MatchmakingService, type PairMatch } from './matchmaking.service';
+
+/** How often the background sweep re-attempts pairing waiting players. */
+const SWEEP_INTERVAL_MS = 1500;
 
 @WebSocketGateway({
   namespace: '/matchmaking',
   cors: { origin: config.corsOrigin, credentials: true },
 })
-export class MatchmakingGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class MatchmakingGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy
+{
   /** userId -> connected socket (single-instance routing for match notices). */
   private readonly sockets = new Map<string, Socket>();
+  private sweepTimer?: NodeJS.Timeout;
 
   constructor(
     private readonly mm: MatchmakingService,
     private readonly auth: AuthService,
   ) {}
+
+  afterInit() {
+    // Periodically pair any waiting players. This catches pairs that both
+    // enqueued without seeing each other and lets the rating tolerance widen
+    // over time, so searches never get permanently stuck.
+    this.sweepTimer = setInterval(() => void this.sweep(), SWEEP_INTERVAL_MS);
+  }
+
+  onModuleDestroy() {
+    if (this.sweepTimer) clearInterval(this.sweepTimer);
+  }
+
+  private async sweep() {
+    for (const tcId of Object.keys(TIME_CONTROL_BY_ID)) {
+      try {
+        this.notify(await this.mm.tryPair(tcId));
+      } catch {
+        // ignore transient errors; the next sweep retries
+      }
+    }
+  }
+
+  private notify(matches: PairMatch[]) {
+    for (const match of matches) {
+      for (const playerId of match.players) {
+        this.sockets.get(playerId)?.emit(MM_EVENTS.matched, { gameId: match.gameId });
+      }
+    }
+  }
 
   async handleConnection(socket: Socket) {
     const token = socket.handshake.auth?.token as string | undefined;
@@ -61,13 +98,12 @@ export class MatchmakingGateway implements OnGatewayConnection, OnGatewayDisconn
   @SubscribeMessage(MM_EVENTS.join)
   async onJoin(@ConnectedSocket() socket: Socket, @MessageBody() body: MmJoinPayload) {
     const userId = socket.data.userId as string;
-    const result = await this.mm.join(userId, body.timeControlId, body.ratingRange);
-    if (!result.matched) {
+    await this.mm.enqueue(userId, body.timeControlId);
+    const matches = await this.mm.tryPair(body.timeControlId);
+    this.notify(matches);
+    // If this player wasn't paired immediately, the sweep will keep trying.
+    if (!matches.some((m) => m.players.includes(userId))) {
       socket.emit(MM_EVENTS.queued, { timeControlId: body.timeControlId });
-      return;
-    }
-    for (const playerId of result.players) {
-      this.sockets.get(playerId)?.emit(MM_EVENTS.matched, { gameId: result.gameId });
     }
   }
 
