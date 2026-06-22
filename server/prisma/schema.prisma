@@ -1,8 +1,9 @@
 generator client {
   provider = "prisma-client-js"
-  // "native" covers local dev; the musl target is required for the Alpine
-  // (node:20-alpine) Docker image used in Codespaces / CI.
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+  // "native" covers local dev. The Docker image runs Debian (bookworm, OpenSSL
+  // 3) — `debian-openssl-3.0.x` is the engine it needs; the 1.1.x target is a
+  // safety net in case OpenSSL detection ever falls back on an older base.
+  binaryTargets = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x"]
 }
 
 datasource db {
