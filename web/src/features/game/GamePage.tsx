@@ -5,6 +5,7 @@ import { GAME_EVENTS, type Color, type GameState } from '@chess/shared';
 import { connect } from '../../lib/socket';
 import { useAuth } from '../../lib/auth';
 import { Board } from '../board/Board';
+import { PieceThemeSelector } from '../board/PieceThemeSelector';
 import { Clock } from './Clock';
 
 interface EndedPayload extends GameState {
@@ -95,6 +96,9 @@ export function GamePage() {
           asOf={state.lastMoveAt}
           label={`${bottom.username} (${bottom.rating})`}
         />
+        <div className="mt-3 flex justify-end">
+          <PieceThemeSelector />
+        </div>
       </div>
 
       <div className="w-full md:w-72">

@@ -1,7 +1,9 @@
 /* chessground board + piece styles (must precede @tailwind per CSS @import rules) */
 @import 'chessground/assets/chessground.base.css';
 @import 'chessground/assets/chessground.brown.css';
-@import 'chessground/assets/chessground.cburnett.css';
+/* Piece sets (Lichess SVGs) scoped by .theme-<set>; replaces the single
+   bundled cburnett sheet so all five themes share one source of truth. */
+@import './pieces.css';
 
 @tailwind base;
 @tailwind components;

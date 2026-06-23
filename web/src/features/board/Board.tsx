@@ -5,6 +5,7 @@ import type { Config } from 'chessground/config';
 import type { Key } from 'chessground/types';
 import { Chess, SQUARES } from 'chess.js';
 import type { Color } from '@chess/shared';
+import { usePieceTheme } from '../../lib/pieceTheme';
 
 export interface BoardProps {
   fen: string;
@@ -30,6 +31,7 @@ function computeDests(fen: string): Map<Key, Key[]> {
 export function Board({ fen, orientation, movableColor, turn, lastMove, onMove }: BoardProps) {
   const ref = useRef<HTMLDivElement>(null);
   const apiRef = useRef<Api | null>(null);
+  const { theme } = usePieceTheme();
 
   useEffect(() => {
     if (!ref.current) return;
@@ -69,7 +71,8 @@ export function Board({ fen, orientation, movableColor, turn, lastMove, onMove }
 
   return (
     <div className="w-full max-w-[560px]">
-      <div ref={ref} className="cg-wrap" />
+      {/* The theme-<set> class selects the piece SVGs (see src/pieces.css). */}
+      <div ref={ref} className={`cg-wrap theme-${theme}`} />
     </div>
   );
 }
