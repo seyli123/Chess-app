@@ -136,12 +136,11 @@ analogue of `GameManager`):
   tops up **500 tokens** when balance drops below **100**, at most once per 24h.
 - Balances are stored as **integers** (`BigInt`, smallest unit) — never floats.
 - **Platform fee** is configured in **one place**: `PLATFORM_FEE_BPS` (basis
-  points). The default is **0.01% = `1` bps**.
+  points). The default is **1% = `100` bps**.
   - To change the rake, edit that single env var / `config` constant.
   - Reference: `1%` = `100` bps, `0.1%` = `10` bps, `0.01%` = `1` bps.
-  - ⚠️ Fees use integer (floor) math, so at the **100-token wager cap** (pot
-    ≤ 200) a 1 bps fee rounds to **0** — the house only accrues at larger pots
-    or a higher rate. Bump `PLATFORM_FEE_BPS` if you want a visible rake in dev.
+  - Fees use integer (floor) math, so sub-token fees round down. At the
+    **100-token wager cap** (pot ≤ 200) a 1% fee is 1–2 tokens.
 - The ledger is **double-entry**: every movement is a balanced transaction
   (debits + credits sum to zero) across user/house/escrow/mint wallets, so
   balances are always reconcilable from the postings. Balance-changing

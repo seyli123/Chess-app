@@ -15,8 +15,8 @@ export const config = {
     // Tokens credited automatically on signup.
     signupGrant: BigInt(process.env.SIGNUP_GRANT ?? '1000'),
     // Platform fee in basis points. 100 = 1%, 10 = 0.1%, 1 = 0.01%.
-    // NOTE: integer (floor) math — at small pots a 1 bps fee rounds to 0.
-    platformFeeBps: parseInt(process.env.PLATFORM_FEE_BPS ?? '1', 10),
+    // NOTE: integer (floor) math — at small pots a sub-token fee rounds to 0.
+    platformFeeBps: parseInt(process.env.PLATFORM_FEE_BPS ?? '100', 10),
     // Hard cap on the per-game wager (tokens).
     maxWager: BigInt(process.env.MAX_WAGER ?? '100'),
     faucet: {

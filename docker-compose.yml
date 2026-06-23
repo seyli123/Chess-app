@@ -41,7 +41,7 @@ services:
       # dynamic hosts (GitHub Codespaces forwarded URLs) work without config.
       # Set it to a fixed domain for production.
       SIGNUP_GRANT: "1000"
-      PLATFORM_FEE_BPS: "10"
+      PLATFORM_FEE_BPS: "100"
     ports:
       - "3000:3000"
     depends_on:

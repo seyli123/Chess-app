@@ -87,7 +87,7 @@ export function LobbyPage() {
           className="w-24 rounded bg-slate-900 px-3 py-1.5 disabled:opacity-50"
         />
         <span className="text-xs text-slate-400">
-          0 = casual · max {MAX_WAGER} · winner takes the pot (minus a 0.01% fee)
+          0 = casual · max {MAX_WAGER} · winner takes the pot (minus a 1% fee)
         </span>
         {me && (
           <span className="ml-auto text-xs text-slate-400">

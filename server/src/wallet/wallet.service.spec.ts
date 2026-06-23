@@ -7,13 +7,18 @@ describe('platformFee (integer-floor)', () => {
     expect(platformFee(-50n, 100)).toBe(0n);
   });
 
-  it('floors sub-token fees to zero (0.01% of a 200 pot)', () => {
-    // 200 * 1 / 10000 = 0.02 -> 0
+  it('applies the default 1% fee at the wager cap', () => {
+    // Default PLATFORM_FEE_BPS = 100 (1%). 200 * 100 / 10000 = 2.
+    expect(platformFee(200n, 100)).toBe(2n); // 1% of a 200 pot
+    expect(platformFee(100n, 100)).toBe(1n); // 1% of a 100 pot
+  });
+
+  it('floors sub-token fees to zero', () => {
+    // 200 * 1 / 10000 = 0.02 -> 0 (0.01% on a tiny pot)
     expect(platformFee(200n, 1)).toBe(0n);
   });
 
-  it('computes whole-token fees correctly', () => {
-    expect(platformFee(200n, 100)).toBe(2n); // 1% of 200
+  it('computes whole-token fees correctly at other rates', () => {
     expect(platformFee(10_000n, 1)).toBe(1n); // 0.01% of 10000
     expect(platformFee(1_000_000n, 10)).toBe(1000n); // 0.1% of 1,000,000
   });
