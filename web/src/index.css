@@ -31,3 +31,27 @@ body {
 .cg-wrap cg-board square.premove-dest:hover {
   background: rgba(244, 63, 94, 0.35);
 }
+
+/* Low-time clock warning: pulse between bright and deep red. The animation sets
+   background-color, which overrides the clock's normal Tailwind background while
+   it runs. Speed escalates as time gets more critical (see Clock.tsx). */
+@keyframes clock-flash {
+  0%,
+  100% {
+    background-color: #ef4444; /* bright red */
+    color: #fff;
+  }
+  50% {
+    background-color: #7f1d1d; /* deep red */
+    color: #fecaca;
+  }
+}
+.clock-flash-slow {
+  animation: clock-flash 1s steps(1, end) infinite;
+}
+.clock-flash-medium {
+  animation: clock-flash 0.5s steps(1, end) infinite;
+}
+.clock-flash-fast {
+  animation: clock-flash 0.333s steps(1, end) infinite;
+}
