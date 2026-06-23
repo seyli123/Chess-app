@@ -1,14 +1,18 @@
-import { PIECE_THEMES, usePieceTheme, type PieceTheme } from '../../lib/pieceTheme';
+import { Link } from 'react-router-dom';
+import { PIECE_THEMES, useSettings, type PieceTheme } from '../../lib/settings';
 
-/** Dropdown to switch the board's piece set; persisted via PieceThemeProvider. */
+/**
+ * Compact in-game piece-set switcher. Full theme options (board colours, visual
+ * previews) live on the Settings page, linked here.
+ */
 export function PieceThemeSelector({ className = '' }: { className?: string }) {
-  const { theme, setTheme } = usePieceTheme();
+  const { pieceTheme, setPieceTheme } = useSettings();
   return (
     <label className={`flex items-center gap-2 text-sm text-slate-400 ${className}`}>
       <span>Pieces</span>
       <select
-        value={theme}
-        onChange={(e) => setTheme(e.target.value as PieceTheme)}
+        value={pieceTheme}
+        onChange={(e) => setPieceTheme(e.target.value as PieceTheme)}
         className="rounded bg-slate-800 px-2 py-1 text-slate-100 hover:bg-slate-700"
       >
         {PIECE_THEMES.map((t) => (
@@ -17,6 +21,9 @@ export function PieceThemeSelector({ className = '' }: { className?: string }) {
           </option>
         ))}
       </select>
+      <Link to="/settings" className="text-xs text-slate-500 hover:text-emerald-400" title="More themes">
+        ⚙
+      </Link>
     </label>
   );
 }

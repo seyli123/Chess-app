@@ -6,6 +6,7 @@ import { GamePage } from './features/game/GamePage';
 import { ProfilePage } from './features/profile/ProfilePage';
 import { TournamentsPage } from './features/tournament/TournamentsPage';
 import { TournamentPage } from './features/tournament/TournamentPage';
+import { SettingsPage } from './features/settings/SettingsPage';
 
 function Nav() {
   const { me, logout } = useAuth();
@@ -35,6 +36,14 @@ function Nav() {
             Log in
           </Link>
         )}
+        <Link
+          to="/settings"
+          title="Settings"
+          aria-label="Settings"
+          className="text-lg text-slate-400 hover:text-emerald-400"
+        >
+          ⚙
+        </Link>
       </div>
     </nav>
   );
@@ -79,6 +88,8 @@ export default function App() {
           />
           {/* Tournament detail is public so anyone can follow standings. */}
           <Route path="/tournaments/:id" element={<TournamentPage />} />
+          {/* Settings are client-side prefs — available to everyone. */}
+          <Route path="/settings" element={<SettingsPage />} />
           {/* Game route is public so anyone can spectate. */}
           <Route path="/game/:id" element={<GamePage />} />
         </Routes>

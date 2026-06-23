@@ -4,6 +4,8 @@
 /* Piece sets (Lichess SVGs) scoped by .theme-<set>; replaces the single
    bundled cburnett sheet so all five themes share one source of truth. */
 @import './pieces.css';
+/* Board colour themes scoped by .board-<id>. */
+@import './board-themes.css';
 
 @tailwind base;
 @tailwind components;

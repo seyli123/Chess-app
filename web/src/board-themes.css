@@ -1,0 +1,31 @@
+/*
+ * Board colour themes. Each is scoped by a `.board-<id>` class on the
+ * chessground wrapper and overrides the base square colours from
+ * chessground.brown.css (which still supplies the interactive highlight
+ * styles — last move, check, move hints, etc.).
+ *
+ * The checkerboard is a conic-gradient tiled at 25% (each tile = a 2x2 block of
+ * squares), which lines up exactly with chessground's 8x8 grid. Colours mirror
+ * BOARD_THEMES in src/lib/settings.tsx — keep the two in sync.
+ */
+
+.cg-wrap.board-brown cg-board {
+  background-color: #f0d9b5;
+  background-image: conic-gradient(#b58863 25%, #f0d9b5 0 50%, #b58863 0 75%, #f0d9b5 0);
+  background-size: 25% 25%;
+}
+.cg-wrap.board-green cg-board {
+  background-color: #ebecd0;
+  background-image: conic-gradient(#769656 25%, #ebecd0 0 50%, #769656 0 75%, #ebecd0 0);
+  background-size: 25% 25%;
+}
+.cg-wrap.board-blue cg-board {
+  background-color: #dee3e6;
+  background-image: conic-gradient(#8ca2ad 25%, #dee3e6 0 50%, #8ca2ad 0 75%, #dee3e6 0);
+  background-size: 25% 25%;
+}
+.cg-wrap.board-grey cg-board {
+  background-color: #e8e8e8;
+  background-image: conic-gradient(#9e9e9e 25%, #e8e8e8 0 50%, #9e9e9e 0 75%, #e8e8e8 0);
+  background-size: 25% 25%;
+}

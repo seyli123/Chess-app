@@ -1,13 +1,13 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import { PieceThemeProvider } from './lib/pieceTheme';
+import { SettingsProvider } from './lib/settings';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <PieceThemeProvider>
+    <SettingsProvider>
       <App />
-    </PieceThemeProvider>
+    </SettingsProvider>
   </React.StrictMode>,
 );

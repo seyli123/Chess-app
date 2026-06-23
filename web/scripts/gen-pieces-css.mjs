@@ -9,7 +9,7 @@ import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-/** Keep in sync with PIECE_THEMES in src/lib/pieceTheme.tsx. */
+/** Keep in sync with PIECE_THEMES in src/lib/settings.tsx. */
 const SETS = ['cburnett', 'merida', 'alpha', 'california', 'gioco'];
 const COLORS = { w: 'white', b: 'black' };
 const ROLES = { P: 'pawn', N: 'knight', B: 'bishop', R: 'rook', Q: 'queen', K: 'king' };
