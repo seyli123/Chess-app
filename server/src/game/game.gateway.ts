@@ -88,4 +88,14 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection {
   onDeclineDraw(@ConnectedSocket() socket: Socket, @MessageBody() body: { gameId: string }) {
     if (socket.data.userId) this.manager.declineDraw(body.gameId, socket.data.userId);
   }
+
+  @SubscribeMessage(GAME_EVENTS.rematchOffer)
+  async onRematchOffer(@ConnectedSocket() socket: Socket, @MessageBody() body: { gameId: string }) {
+    if (socket.data.userId) await this.manager.offerRematch(body.gameId, socket.data.userId);
+  }
+
+  @SubscribeMessage(GAME_EVENTS.rematchCancel)
+  onRematchCancel(@ConnectedSocket() socket: Socket, @MessageBody() body: { gameId: string }) {
+    if (socket.data.userId) this.manager.cancelRematch(body.gameId, socket.data.userId);
+  }
 }

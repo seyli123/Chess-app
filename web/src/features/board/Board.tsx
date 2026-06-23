@@ -10,9 +10,14 @@ import { useSettings } from '../../lib/settings';
 export interface BoardProps {
   fen: string;
   orientation: Color;
-  /** Side this client is allowed to move; undefined => view only. */
-  movableColor?: Color;
   turn: Color;
+  /**
+   * The client's own colour when interaction is allowed at the live position
+   * (enables real moves and premoves). Undefined => view-only.
+   */
+  playerColor?: Color;
+  /** True when it's the player's turn (real move); false => premove mode. */
+  myTurn?: boolean;
   lastMove?: [string, string];
   onMove?: (from: string, to: string, promotion?: string) => void;
 }
@@ -28,7 +33,15 @@ function computeDests(fen: string): Map<Key, Key[]> {
   return dests;
 }
 
-export function Board({ fen, orientation, movableColor, turn, lastMove, onMove }: BoardProps) {
+export function Board({
+  fen,
+  orientation,
+  turn,
+  playerColor,
+  myTurn,
+  lastMove,
+  onMove,
+}: BoardProps) {
   const ref = useRef<HTMLDivElement>(null);
   const apiRef = useRef<Api | null>(null);
   const { pieceTheme, boardTheme } = useSettings();
@@ -40,7 +53,7 @@ export function Board({ fen, orientation, movableColor, turn, lastMove, onMove }
       orientation,
       turnColor: turn,
       coordinates: true,
-      movable: { free: false, color: movableColor, dests: computeDests(fen) },
+      movable: { free: false, color: playerColor, dests: computeDests(fen) },
     };
     apiRef.current = Chessground(ref.current, config);
     return () => apiRef.current?.destroy();
@@ -50,6 +63,8 @@ export function Board({ fen, orientation, movableColor, turn, lastMove, onMove }
   useEffect(() => {
     const api = apiRef.current;
     if (!api) return;
+    const canMoveNow = !!playerColor && !!myTurn;
+    const canPremove = !!playerColor && !myTurn;
     api.set({
       fen,
       orientation,
@@ -57,8 +72,10 @@ export function Board({ fen, orientation, movableColor, turn, lastMove, onMove }
       lastMove: lastMove as Key[] | undefined,
       movable: {
         free: false,
-        color: movableColor,
-        dests: movableColor ? computeDests(fen) : new Map(),
+        // Keep the player's colour set during the opponent's turn so they can
+        // grab a piece to queue a premove (color !== turnColor => premove).
+        color: playerColor,
+        dests: canMoveNow ? computeDests(fen) : new Map(),
         events: {
           after: (from: Key, to: Key) => {
             // Always promote to queen in this slice; a promotion picker is a TODO.
@@ -66,8 +83,23 @@ export function Board({ fen, orientation, movableColor, turn, lastMove, onMove }
           },
         },
       },
+      premovable: { enabled: canPremove, showDests: true },
     });
-  }, [fen, orientation, movableColor, turn, lastMove, onMove]);
+    // When it becomes our turn, flush any queued premove (illegal ones are
+    // dropped silently by chessground). Otherwise clear stale premoves when the
+    // board goes view-only (game ended / reviewing history).
+    if (canMoveNow) api.playPremove();
+    else if (!canPremove) api.cancelPremove();
+  }, [fen, orientation, turn, playerColor, myTurn, lastMove, onMove]);
+
+  // Escape cancels a queued premove.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') apiRef.current?.cancelPremove();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   return (
     <div className="w-full max-w-[560px]">

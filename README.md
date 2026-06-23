@@ -106,6 +106,19 @@ See [`.env.example`](.env.example). Key ones:
   context, persist to `localStorage`, and apply to every board. A **Settings**
   page (gear icon in the nav) offers visual previews of each option plus a live
   preview board.
+- **Game board UX** (all derived client-side from the game's PGN, so they work
+  live and in review):
+  - **Move navigation** — scrollable SAN move list, first/prev/next/last +
+    arrow keys, click-to-seek; the board renders the selected ply (view-only
+    when off the live position). Finished games fall back to `GET /games/:id`.
+  - **Captured pieces & material** — captures shown above/below the board as
+    theme SVGs with a `+N` lead for the side ahead (p1/n3/b3/r5/q9).
+  - **Premoves** — queue a move during the opponent's turn (red highlight via
+    chessground's `premovable`); it auto-plays on their move, is dropped
+    silently if illegal, and is cancelled with Escape.
+  - **Rematch** — after a game both players can offer a rematch (30s window,
+    server-coordinated over `/game`); when both agree a colour-swapped game with
+    the same time control + wager spawns. Plus a **New Game** button to the lobby.
 
 ### Arena tournaments
 

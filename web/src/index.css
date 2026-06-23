@@ -19,3 +19,15 @@ body {
   width: 100%;
   aspect-ratio: 1 / 1;
 }
+
+/* Queued premove highlighting — red/orange (Lichess-style), overriding the
+   board theme's default blue premove squares. */
+.cg-wrap cg-board square.current-premove {
+  background-color: rgba(244, 63, 94, 0.55);
+}
+.cg-wrap cg-board square.premove-dest {
+  background: radial-gradient(rgba(244, 63, 94, 0.45) 22%, rgba(0, 0, 0, 0) 0);
+}
+.cg-wrap cg-board square.premove-dest:hover {
+  background: rgba(244, 63, 94, 0.35);
+}

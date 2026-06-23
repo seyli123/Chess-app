@@ -53,11 +53,34 @@ export interface GameEndInfo {
 
 export type GameEndHook = (info: GameEndInfo) => void;
 
+/** Parameters needed to spawn a rematch with the same settings. */
+interface RematchParams {
+  whiteId: string;
+  blackId: string;
+  category: TimeCategory;
+  initialSec: number;
+  incrementSec: number;
+  rated: boolean;
+  wager: number;
+}
+
+interface RematchOffer {
+  params: RematchParams;
+  /** Players who have so far requested the rematch. */
+  offered: Set<string>;
+  timer: NodeJS.Timeout;
+}
+
+/** How long a rematch offer stays open. */
+const REMATCH_MS = 30_000;
+
 @Injectable()
 export class GameManager {
   private readonly logger = new Logger(GameManager.name);
   private readonly games = new Map<string, ActiveGame>();
   private readonly endHooks: GameEndHook[] = [];
+  /** Pending rematch offers keyed by the *finished* game's id. */
+  private readonly rematches = new Map<string, RematchOffer>();
   private ns?: Namespace;
 
   constructor(
@@ -357,6 +380,96 @@ export class GameManager {
     }
 
     // Keep finished game briefly so late joiners get the final state, then evict.
-    setTimeout(() => this.games.delete(g.id), 60_000);
+    setTimeout(() => {
+      this.games.delete(g.id);
+      const offer = this.rematches.get(g.id);
+      if (offer) {
+        clearTimeout(offer.timer);
+        this.rematches.delete(g.id);
+      }
+    }, 60_000);
+  }
+
+  // ---- Rematch ----
+
+  /** Settings for a rematch of a finished game, or null if it can't be rematched. */
+  private async rematchParams(gameId: string): Promise<RematchParams | null> {
+    const g = this.games.get(gameId);
+    if (g) {
+      if (g.tournamentId) return null; // arena games re-pair via the tournament
+      return {
+        whiteId: g.white.id,
+        blackId: g.black.id,
+        category: g.category,
+        initialSec: g.initialSec,
+        incrementSec: g.incrementSec,
+        rated: g.rated,
+        wager: g.wager,
+      };
+    }
+    const row = await this.gameService.getGame(gameId);
+    if (!row || row.tournamentId) return null;
+    return {
+      whiteId: row.whiteId,
+      blackId: row.blackId,
+      category: row.category,
+      initialSec: row.initialSec,
+      incrementSec: row.incrementSec,
+      rated: row.rated,
+      wager: Number(row.wagerAmount),
+    };
+  }
+
+  /**
+   * Record a player's rematch request. When both players have asked, spawn a new
+   * game with the same settings and swapped colours, notifying the old game's
+   * room with its id. Offers expire after {@link REMATCH_MS}.
+   */
+  async offerRematch(gameId: string, userId: string): Promise<void> {
+    const params = await this.rematchParams(gameId);
+    if (!params) return;
+    if (userId !== params.whiteId && userId !== params.blackId) return;
+
+    let offer = this.rematches.get(gameId);
+    if (!offer) {
+      offer = {
+        params,
+        offered: new Set(),
+        timer: setTimeout(() => this.expireRematch(gameId), REMATCH_MS),
+      };
+      this.rematches.set(gameId, offer);
+    }
+    offer.offered.add(userId);
+
+    if (offer.offered.has(params.whiteId) && offer.offered.has(params.blackId)) {
+      clearTimeout(offer.timer);
+      this.rematches.delete(gameId);
+      const swapped = { ...params, whiteId: params.blackId, blackId: params.whiteId };
+      try {
+        const newId = await this.createGame(swapped);
+        this.ns?.to(gameId).emit(GAME_EVENTS.rematchReady, { gameId: newId });
+      } catch (err) {
+        this.logger.error(`Rematch creation failed for ${gameId}: ${String(err)}`);
+        this.ns?.to(gameId).emit(GAME_EVENTS.rematchError, {
+          message: 'Could not start rematch (check token balance).',
+        });
+      }
+    } else {
+      this.ns?.to(gameId).emit(GAME_EVENTS.rematchOffered, { from: userId });
+    }
+  }
+
+  /** Withdraw a pending rematch offer (any side clearing it cancels the pair). */
+  cancelRematch(gameId: string, userId: string): void {
+    const offer = this.rematches.get(gameId);
+    if (!offer || !offer.offered.has(userId)) return;
+    clearTimeout(offer.timer);
+    this.rematches.delete(gameId);
+    this.ns?.to(gameId).emit(GAME_EVENTS.rematchCanceled, { from: userId });
+  }
+
+  private expireRematch(gameId: string): void {
+    if (!this.rematches.delete(gameId)) return;
+    this.ns?.to(gameId).emit(GAME_EVENTS.rematchExpired, {});
   }
 }

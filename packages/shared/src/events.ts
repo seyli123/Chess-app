@@ -84,10 +84,22 @@ export const GAME_EVENTS = {
   acceptDraw: 'game:acceptDraw',
   declineDraw: 'game:declineDraw',
   abort: 'game:abort',
+  // rematch (client -> server)
+  rematchOffer: 'game:rematchOffer',
+  rematchCancel: 'game:rematchCancel',
   // server -> client
   state: 'game:state',
   moveRejected: 'game:moveRejected',
   ended: 'game:ended',
   clock: 'game:clock',
   error: 'game:error',
+  // rematch (server -> client)
+  rematchOffered: 'game:rematchOffered',
+  rematchCanceled: 'game:rematchCanceled',
+  rematchReady: 'game:rematchReady',
+  rematchExpired: 'game:rematchExpired',
+  rematchError: 'game:rematchError',
 } as const;
+
+/** Seconds a rematch offer stays open before it expires. */
+export const REMATCH_TTL_SEC = 30;

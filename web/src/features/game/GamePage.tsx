@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { Socket } from 'socket.io-client';
-import { GAME_EVENTS, type Color, type GameState } from '@chess/shared';
+import { GAME_EVENTS, REMATCH_TTL_SEC, type Color, type GameState } from '@chess/shared';
 import { api } from '../../lib/api';
 import { connect } from '../../lib/socket';
 import { useAuth } from '../../lib/auth';
@@ -70,6 +70,15 @@ export function GamePage() {
   const [notice, setNotice] = useState<string>('');
   const socketRef = useRef<Socket | null>(null);
 
+  // Rematch: 'mine' = I offered (waiting), 'theirs' = opponent offered (accept).
+  const [rematch, setRematch] = useState<'idle' | 'mine' | 'theirs'>('idle');
+  const [rematchSecs, setRematchSecs] = useState(0);
+  const [rematchMsg, setRematchMsg] = useState('');
+  // Refs so socket handlers (bound once) see the latest identity/role.
+  const meIdRef = useRef<string | undefined>(undefined);
+  const isPlayerRef = useRef(false);
+  meIdRef.current = me?.id;
+
   // ---- History navigation ----
   const history = useMemo(() => parseHistory(state?.pgn ?? ''), [state?.pgn]);
   const plies = history.length - 1;
@@ -93,6 +102,16 @@ export function GamePage() {
 
   useEffect(() => {
     if (!id) return;
+    // Reset per-game UI state when navigating between games (e.g. a rematch).
+    setState(null);
+    setEnded(null);
+    setNotice('');
+    setCursor(0);
+    followingRef.current = true;
+    setRematch('idle');
+    setRematchSecs(0);
+    setRematchMsg('');
+
     const socket = connect('/game');
     socketRef.current = socket;
     socket.emit(GAME_EVENTS.join, { gameId: id });
@@ -103,6 +122,30 @@ export function GamePage() {
     socket.on(GAME_EVENTS.ended, (s: EndedPayload) => {
       setState(s);
       setEnded(s);
+    });
+    // ---- Rematch coordination ----
+    socket.on(GAME_EVENTS.rematchOffered, (p: { from: string }) => {
+      setRematch(p.from === meIdRef.current ? 'mine' : 'theirs');
+      setRematchSecs(REMATCH_TTL_SEC);
+      setRematchMsg('');
+    });
+    socket.on(GAME_EVENTS.rematchReady, (p: { gameId: string }) => {
+      if (isPlayerRef.current) navigate(`/game/${p.gameId}`);
+    });
+    socket.on(GAME_EVENTS.rematchCanceled, () => {
+      setRematch('idle');
+      setRematchSecs(0);
+      setRematchMsg('Rematch canceled');
+    });
+    socket.on(GAME_EVENTS.rematchExpired, () => {
+      setRematch('idle');
+      setRematchSecs(0);
+      setRematchMsg('Rematch offer expired');
+    });
+    socket.on(GAME_EVENTS.rematchError, (p: { message: string }) => {
+      setRematch('idle');
+      setRematchSecs(0);
+      setRematchMsg(p.message);
     });
     socket.on(GAME_EVENTS.moveRejected, (p: { reason: string }) => setNotice(p.reason));
     socket.on(GAME_EVENTS.error, async (p: { message: string }) => {
@@ -151,18 +194,28 @@ export function GamePage() {
     if (me?.id === ended.white.id || me?.id === ended.black.id) void refresh();
   }, [ended, me, refresh]);
 
+  // Tick down the rematch countdown while an offer is open.
+  useEffect(() => {
+    if (rematch === 'idle') return;
+    const t = setInterval(() => setRematchSecs((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(t);
+  }, [rematch]);
+
   if (!state) return <div className="p-8">{notice || 'Loading game…'}</div>;
 
   const myColor: Color | undefined =
     me?.id === state.white.id ? 'white' : me?.id === state.black.id ? 'black' : undefined;
+  isPlayerRef.current = !!myColor;
   const orientation: Color = myColor ?? 'white';
 
   // Position currently being viewed (live tip or a past ply).
   const view = history[Math.min(cursor, plies)] ?? history[0];
   const viewTurn: Color = view.fen.split(' ')[1] === 'b' ? 'black' : 'white';
   const atLatest = cursor === plies;
-  // Moves are only allowed on your turn at the live position of an active game.
-  const canMove = !!myColor && state.status === 'ACTIVE' && atLatest && state.turn === myColor;
+  // The client may interact (move or premove) only at the live position of an
+  // active game; premoves apply when it's not yet their turn.
+  const canInteract = !!myColor && state.status === 'ACTIVE' && atLatest;
+  const myTurn = state.turn === myColor;
   const material = materialAt(history, cursor);
 
   const emit = (event: string, extra: object = {}) =>
@@ -191,7 +244,8 @@ export function GamePage() {
             fen={view.fen}
             orientation={orientation}
             turn={viewTurn}
-            movableColor={canMove ? myColor : undefined}
+            playerColor={canInteract ? myColor : undefined}
+            myTurn={myTurn}
             lastMove={view.lastMove}
             onMove={move}
           />
@@ -241,6 +295,44 @@ export function GamePage() {
                   {state.black.username}: {ended.ratingChange.black.before} →{' '}
                   {ended.ratingChange.black.after}
                 </p>
+              )}
+
+              {myColor && (
+                <div className="space-y-2 pt-2">
+                  {rematch === 'mine' ? (
+                    <>
+                      <div className="rounded bg-slate-700 py-2 text-center text-sm">
+                        Waiting for opponent… ({rematchSecs}s)
+                      </div>
+                      <button
+                        onClick={() => {
+                          emit(GAME_EVENTS.rematchCancel);
+                          setRematch('idle');
+                          setRematchSecs(0);
+                        }}
+                        className="w-full rounded bg-slate-700 py-2 text-sm hover:bg-slate-600"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => emit(GAME_EVENTS.rematchOffer)}
+                      className="w-full rounded bg-emerald-700 py-2 hover:bg-emerald-600"
+                    >
+                      {rematch === 'theirs'
+                        ? `Accept rematch (${rematchSecs}s)`
+                        : 'Rematch'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => navigate('/')}
+                    className="w-full rounded bg-slate-700 py-2 text-sm hover:bg-slate-600"
+                  >
+                    New Game
+                  </button>
+                  {rematchMsg && <p className="text-sm text-amber-400">{rematchMsg}</p>}
+                </div>
               )}
             </div>
           ) : myColor ? (
