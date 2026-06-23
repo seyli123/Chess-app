@@ -7,6 +7,8 @@ export interface Me {
   email: string;
   ratings: { category: string; rating: number; gamesPlayed: number }[];
   stats: { wins: number; losses: number; draws: number; total: number };
+  /** Play-money wallet balance in tokens (string-safe integer). */
+  balance: number;
 }
 
 interface AuthContextValue {
@@ -15,6 +17,8 @@ interface AuthContextValue {
   login: (login: string, password: string) => Promise<void>;
   register: (email: string, username: string, password: string) => Promise<void>;
   logout: () => void;
+  /** Re-fetch the current user (e.g. after a wager settles or a faucet claim). */
+  refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>(null as never);
@@ -30,7 +34,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
-      setMe(await api<Me>('/users/me'));
+      const data = await api<Me>('/users/me');
+      // balance is serialised as a string (BigInt) — coerce to a number.
+      setMe({ ...data, balance: Number(data.balance ?? 0) });
     } catch {
       setMe(null);
     } finally {
@@ -72,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ me, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ me, loading, login, register, logout, refresh: loadMe }}>
       {children}
     </AuthContext.Provider>
   );

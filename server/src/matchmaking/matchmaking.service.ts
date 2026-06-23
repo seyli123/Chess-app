@@ -8,10 +8,17 @@ import { GameManager } from '../game/game-manager';
 const BASE_TOLERANCE = 300;
 /** How fast the tolerance widens per second a player waits (points/sec). */
 const WIDEN_PER_SEC = 150;
+/** Registry set of currently-active "<timeControlId>|<wager>" buckets. */
+const BUCKETS_KEY = 'mm:buckets';
 
 export interface PairMatch {
   gameId: string;
   players: string[];
+}
+
+export interface Bucket {
+  timeControlId: string;
+  wager: number;
 }
 
 @Injectable()
@@ -22,50 +29,67 @@ export class MatchmakingService {
     private readonly games: GameManager,
   ) {}
 
-  private qKey(tcId: string) {
-    return `mm:q:${tcId}`;
+  // Players only ever match others in the *same* (time control, wager) bucket,
+  // so a 50-token blitz seeker never meets a 0-token one.
+  private bucket(tcId: string, wager: number): string {
+    return `${tcId}|${wager}`;
   }
-
-  private tKey(tcId: string) {
-    return `mm:t:${tcId}`;
+  private qKey(bucket: string) {
+    return `mm:q:${bucket}`;
+  }
+  private tKey(bucket: string) {
+    return `mm:t:${bucket}`;
   }
 
   /**
-   * Add a player to a time-control queue (idempotent). Pairing is performed
-   * separately by {@link tryPair}, which both join handling and a periodic
-   * sweep call — so two players who enqueue without seeing each other still get
-   * matched, and the search radius widens the longer they wait.
+   * Add a player to a (time control, wager) queue (idempotent). Pairing is
+   * performed separately by {@link tryPair}, which both join handling and a
+   * periodic sweep call — so two players who enqueue without seeing each other
+   * still get matched, and the search radius widens the longer they wait.
    */
-  async enqueue(userId: string, timeControlId: string): Promise<void> {
+  async enqueue(userId: string, timeControlId: string, wager = 0): Promise<void> {
     const tc = TIME_CONTROL_BY_ID[timeControlId];
     if (!tc) throw new BadRequestException('unknown time control');
+    const bucket = this.bucket(tc.id, wager);
     const rating = await this.rating.getOrCreate(userId, tc.category);
     const redis = this.redis.client;
-    await redis.zadd(this.qKey(tc.id), rating.rating, userId);
+    await redis.sadd(BUCKETS_KEY, bucket);
+    await redis.zadd(this.qKey(bucket), rating.rating, userId);
     // Record the wait start once; don't reset it if already queued.
-    await redis.hsetnx(this.tKey(tc.id), userId, Date.now().toString());
+    await redis.hsetnx(this.tKey(bucket), userId, Date.now().toString());
   }
 
   async leave(userId: string): Promise<void> {
     const redis = this.redis.client;
-    for (const tcId of Object.keys(TIME_CONTROL_BY_ID)) {
-      await redis.zrem(this.qKey(tcId), userId);
-      await redis.hdel(this.tKey(tcId), userId);
+    const buckets = await redis.smembers(BUCKETS_KEY);
+    for (const bucket of buckets) {
+      await redis.zrem(this.qKey(bucket), userId);
+      await redis.hdel(this.tKey(bucket), userId);
     }
   }
 
+  /** Every bucket with waiting players, for the periodic sweep to retry. */
+  async activeBuckets(): Promise<Bucket[]> {
+    const buckets = await this.redis.client.smembers(BUCKETS_KEY);
+    return buckets.map((b) => {
+      const sep = b.lastIndexOf('|');
+      return { timeControlId: b.slice(0, sep), wager: Number(b.slice(sep + 1)) };
+    });
+  }
+
   /**
-   * Greedily pair waiting players for a time control. Players are scanned in
-   * rating order so the closest-rated pairs match first; the allowed rating gap
-   * widens with how long the longer-waiting player has been queued, guaranteeing
-   * that any two waiting players eventually match even if their ratings diverged.
+   * Greedily pair waiting players in one bucket. Players are scanned in rating
+   * order so the closest-rated pairs match first; the allowed rating gap widens
+   * with how long the longer-waiting player has been queued, guaranteeing that
+   * any two waiting players eventually match even if their ratings diverged.
    * Returns every match created in this pass.
    */
-  async tryPair(timeControlId: string): Promise<PairMatch[]> {
+  async tryPair(timeControlId: string, wager = 0): Promise<PairMatch[]> {
     const tc = TIME_CONTROL_BY_ID[timeControlId];
     if (!tc) return [];
-    const key = this.qKey(tc.id);
-    const tkey = this.tKey(tc.id);
+    const bucket = this.bucket(tc.id, wager);
+    const key = this.qKey(bucket);
+    const tkey = this.tKey(bucket);
     const redis = this.redis.client;
     const matches: PairMatch[] = [];
     const now = Date.now();
@@ -84,7 +108,8 @@ export class MatchmakingService {
       for (let i = 0; i < members.length - 1; i++) {
         const a = members[i];
         const b = members[i + 1];
-        const waitedSec = (now - Math.min(Number(times[a.id] ?? now), Number(times[b.id] ?? now))) / 1000;
+        const waitedSec =
+          (now - Math.min(Number(times[a.id] ?? now), Number(times[b.id] ?? now))) / 1000;
         const tolerance = BASE_TOLERANCE + WIDEN_PER_SEC * waitedSec;
         if (Math.abs(a.score - b.score) > tolerance) continue;
 
@@ -94,7 +119,17 @@ export class MatchmakingService {
         const claimedB = await redis.zrem(key, b.id);
         if (claimedA === 1 && claimedB === 1) {
           await redis.hdel(tkey, a.id, b.id);
-          matches.push(await this.pair(a.id, b.id, tc.id));
+          try {
+            matches.push(await this.pair(a.id, b.id, tc.id, wager));
+          } catch {
+            // Game creation / escrow failed (e.g. a stake became unaffordable).
+            // Return both to the queue and bail; the next sweep retries.
+            await redis.zadd(key, a.score, a.id);
+            await redis.zadd(key, b.score, b.id);
+            await redis.hsetnx(tkey, a.id, String(now));
+            await redis.hsetnx(tkey, b.id, String(now));
+            return matches;
+          }
           pairedThisPass = true;
           break; // restart scan with the shrunken set
         }
@@ -104,10 +139,20 @@ export class MatchmakingService {
       }
       if (!pairedThisPass) break;
     }
+
+    // Drop the bucket from the registry once it has drained.
+    if ((await redis.zrange(key, 0, -1)).length === 0) {
+      await redis.srem(BUCKETS_KEY, bucket);
+    }
     return matches;
   }
 
-  private async pair(a: string, b: string, timeControlId: string): Promise<PairMatch> {
+  private async pair(
+    a: string,
+    b: string,
+    timeControlId: string,
+    wager: number,
+  ): Promise<PairMatch> {
     const tc = TIME_CONTROL_BY_ID[timeControlId];
     // Randomise colours.
     const [whiteId, blackId] = Math.random() < 0.5 ? [a, b] : [b, a];
@@ -118,6 +163,7 @@ export class MatchmakingService {
       initialSec: tc.initialSec,
       incrementSec: tc.incrementSec,
       rated: true,
+      wager,
     });
     return { gameId, players: [a, b] };
   }

@@ -4,6 +4,20 @@ import { MatchmakingService } from './matchmaking.service';
 class FakeRedis {
   private z = new Map<string, Map<string, number>>();
   private h = new Map<string, Map<string, string>>();
+  private s = new Map<string, Set<string>>();
+
+  async sadd(key: string, member: string) {
+    const set = this.s.get(key) ?? new Set();
+    set.add(member);
+    this.s.set(key, set);
+    return 1;
+  }
+  async srem(key: string, member: string) {
+    return this.s.get(key)?.delete(member) ? 1 : 0;
+  }
+  async smembers(key: string) {
+    return [...(this.s.get(key) ?? [])];
+  }
 
   async zadd(key: string, score: number | string, member: string) {
     const m = this.z.get(key) ?? new Map();
@@ -44,11 +58,12 @@ class FakeRedis {
     if (m) for (const [k, v] of m) o[k] = v;
     return o;
   }
-  /** test helper to backdate a player's wait start */
-  setJoinedAt(tcId: string, userId: string, ts: number) {
-    const m = this.h.get(`mm:t:${tcId}`) ?? new Map();
+  /** test helper to backdate a player's wait start in a (tc, wager) bucket */
+  setJoinedAt(tcId: string, userId: string, ts: number, wager = 0) {
+    const key = `mm:t:${tcId}|${wager}`;
+    const m = this.h.get(key) ?? new Map();
     m.set(userId, String(ts));
-    this.h.set(`mm:t:${tcId}`, m);
+    this.h.set(key, m);
   }
 }
 
@@ -107,5 +122,29 @@ describe('MatchmakingService pairing', () => {
     const { service } = makeService({ solo: 1500 });
     await service.enqueue('solo', TC);
     expect(await service.tryPair(TC)).toHaveLength(0);
+  });
+
+  it('only matches players with the same wager', async () => {
+    const { service, games } = makeService({ alice: 1500, bob: 1510, carol: 1520 });
+    await service.enqueue('alice', TC, 50);
+    await service.enqueue('bob', TC, 0);
+
+    // Different buckets — neither bucket can pair on its own.
+    expect(await service.tryPair(TC, 50)).toHaveLength(0);
+    expect(await service.tryPair(TC, 0)).toHaveLength(0);
+    expect(games.createGame).not.toHaveBeenCalled();
+
+    // A same-wager opponent arrives and pairs, forwarding the wager to the game.
+    await service.enqueue('carol', TC, 50);
+    const matches = await service.tryPair(TC, 50);
+    expect(matches).toHaveLength(1);
+    expect(matches[0].players.sort()).toEqual(['alice', 'carol']);
+    expect(games.createGame).toHaveBeenCalledWith(expect.objectContaining({ wager: 50 }));
+  });
+
+  it('lists active buckets for the sweep', async () => {
+    const { service } = makeService({ alice: 1500 });
+    await service.enqueue('alice', TC, 25);
+    expect(await service.activeBuckets()).toEqual([{ timeControlId: TC, wager: 25 }]);
   });
 });

@@ -4,10 +4,10 @@ A full-stack, real-time chess platform in the style of Lichess/Chess.com: rated
 play, matchmaking, server-authoritative gameplay, and a **play-money** token
 layer (no real currency, ever, in this version).
 
-> **Current scope: gameplay slice.** This repository currently implements
-> authentication, the server-authoritative real-time game engine (clocks,
-> matchmaking, full chess rules), and the Glicko-2 rating system. The wallet /
-> wagering layer is **designed into the schema but not yet implemented** — see
+> **Current scope.** This repository implements authentication, the
+> server-authoritative real-time game engine (clocks, matchmaking, full chess
+> rules), the Glicko-2 rating system, arena tournaments, and the **play-money
+> wagering layer** (double-entry wallet/ledger, escrow, payouts, faucet) — see
 > [Roadmap](#roadmap) and [Plugging in a wallet / real-money provider](#plugging-in-a-wallet--real-money-provider-later).
 
 ## Tech Stack
@@ -132,30 +132,38 @@ analogue of `GameManager`):
 
 - All tokens are **play-money**. There are **no deposits or withdrawals** and no
   payment processor anywhere in this codebase.
+- New users are credited **1,000 tokens** on signup (`SIGNUP_GRANT`). A faucet
+  tops up **500 tokens** when balance drops below **100**, at most once per 24h.
 - Balances are stored as **integers** (`BigInt`, smallest unit) — never floats.
 - **Platform fee** is configured in **one place**: `PLATFORM_FEE_BPS` (basis
-  points). Per project decision the default is **0.1% = `10` bps**.
+  points). The default is **0.01% = `1` bps**.
   - To change the rake, edit that single env var / `config` constant.
   - Reference: `1%` = `100` bps, `0.1%` = `10` bps, `0.01%` = `1` bps.
-- The ledger is designed as **double-entry**: every movement is a balanced
-  transaction (debits + credits sum to zero) across user/house/escrow/mint
-  wallets, so balances are always reconcilable from the postings.
+  - ⚠️ Fees use integer (floor) math, so at the **100-token wager cap** (pot
+    ≤ 200) a 1 bps fee rounds to **0** — the house only accrues at larger pots
+    or a higher rate. Bump `PLATFORM_FEE_BPS` if you want a visible rake in dev.
+- The ledger is **double-entry**: every movement is a balanced transaction
+  (debits + credits sum to zero) across user/house/escrow/mint wallets, so
+  balances are always reconcilable from the postings. Balance-changing
+  operations take `SELECT … FOR UPDATE` row locks to prevent double-spends.
+- **Wagering:** in the lobby a player picks an optional wager (0–`MAX_WAGER`,
+  default cap 100). Matchmaking only pairs players in the same wager bucket; on
+  game start both stakes are escrowed; on completion the winner takes the pot
+  minus the fee (which accrues to HOUSE), while draws/aborts refund both stakes.
 
 ## Plugging in a wallet / real-money provider (later)
 
-The schema already contains `Wallet`, `LedgerTransaction`, `LedgerEntry`, and
-`Escrow`. The intended seam:
+The play-money wallet is implemented in `server/src/wallet/`. `WalletService`
+owns every value movement (`grantSignup`, `claimFaucet`, `lockEscrow`,
+`settleEscrow`) as balanced double-entry `LedgerTransaction`s written inside a
+single Prisma transaction with `SELECT … FOR UPDATE` locks on the involved
+wallets. Minting comes from the system `MINT` wallet; the platform fee accrues
+to `HOUSE`; in-flight stakes sit in `ESCROW`.
 
-1. Define a `WalletProvider` interface in `server/src/wallet/` with methods like
-   `credit`, `debit`, `escrow`, `settle`, `refund` — all of which write
-   double-entry `LedgerEntry` rows inside a single Prisma transaction using
-   `SELECT ... FOR UPDATE` row locks on the involved wallets.
-2. Implement `PlayMoneyWalletProvider` (the only impl now): minting comes from a
-   system `MINT` wallet (signup grant / faucet / admin grant).
-3. A future real-money on-ramp implements the same interface behind a
-   `PaymentProvider` (Stripe/crypto) that maps deposits → credits and
-   withdrawals → debits. **Game and wagering logic depend only on the
-   interface**, so no game code changes when the provider swaps.
+A future real-money on-ramp can sit behind the same surface: implement a
+`PaymentProvider` (Stripe/crypto) that maps deposits → credits and withdrawals →
+debits against the same wallets. Game and wagering logic only call
+`WalletService`, so no game code changes when a provider is added.
 
 ## Roadmap
 
@@ -164,7 +172,7 @@ The schema already contains `Wallet`, `LedgerTransaction`, `LedgerEntry`, and
 - [x] Matchmaking (quick pairing by time control + rating range)
 - [x] Glicko-2 rating per category
 - [x] Arena tournaments (Lichess-style scoring + live re-pairing)
-- [ ] Wallet + double-entry ledger (play-money)
-- [ ] Wagering escrow / payout / fee cycle
+- [x] Wallet + double-entry ledger (play-money)
+- [x] Wagering escrow / payout / fee cycle + faucet
 - [ ] Anti-abuse (collusion, abort/stall, rating manipulation)
 - [ ] Full test suite (heavy on ledger/escrow concurrency)

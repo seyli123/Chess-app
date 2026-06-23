@@ -42,6 +42,8 @@ export interface GameState {
   drawOfferFrom?: Color;
   /** Set when this game is a pairing inside an arena tournament. */
   tournamentId?: string;
+  /** Per-player wager in tokens (0 = unwagered). Pot is 2x this. */
+  wager?: number;
 }
 
 // ---- Matchmaking namespace (/matchmaking) ----
@@ -49,6 +51,8 @@ export interface MmJoinPayload {
   timeControlId: string;
   /** Optional rating window; server clamps. */
   ratingRange?: number;
+  /** Per-player wager in tokens. Server clamps to [0, maxWager]. */
+  wager?: number;
 }
 export interface MmMatchedPayload {
   gameId: string;
@@ -59,6 +63,7 @@ export const MM_EVENTS = {
   leave: 'mm:leave',
   queued: 'mm:queued',
   matched: 'mm:matched',
+  error: 'mm:error',
 } as const;
 
 // ---- Game namespace (/game) ----

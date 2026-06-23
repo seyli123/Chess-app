@@ -9,9 +9,10 @@ import {
 } from '@nestjs/websockets';
 import { OnModuleDestroy } from '@nestjs/common';
 import type { Socket } from 'socket.io';
-import { MM_EVENTS, TIME_CONTROL_BY_ID, type MmJoinPayload } from '@chess/shared';
+import { MM_EVENTS, type MmJoinPayload } from '@chess/shared';
 import { config } from '../config/config';
 import { AuthService } from '../auth/auth.service';
+import { WalletService } from '../wallet/wallet.service';
 import { MatchmakingService, type PairMatch } from './matchmaking.service';
 
 /** How often the background sweep re-attempts pairing waiting players. */
@@ -31,6 +32,7 @@ export class MatchmakingGateway
   constructor(
     private readonly mm: MatchmakingService,
     private readonly auth: AuthService,
+    private readonly wallet: WalletService,
   ) {}
 
   afterInit() {
@@ -45,13 +47,34 @@ export class MatchmakingGateway
   }
 
   private async sweep() {
-    for (const tcId of Object.keys(TIME_CONTROL_BY_ID)) {
+    for (const { timeControlId, wager } of await this.mm.activeBuckets()) {
       try {
-        this.notify(await this.mm.tryPair(tcId));
+        this.notify(await this.mm.tryPair(timeControlId, wager));
       } catch {
         // ignore transient errors; the next sweep retries
       }
     }
+  }
+
+  /**
+   * Clamp the requested wager into [0, maxWager] and confirm the player can
+   * afford it. Returns the effective wager, or null (with an error emitted) if
+   * the balance is too low.
+   */
+  private async resolveWager(
+    userId: string,
+    requested: number | undefined,
+    socket: Socket,
+  ): Promise<number | null> {
+    const max = Number(config.wallet.maxWager);
+    let wager = Math.floor(Number(requested) || 0);
+    if (wager < 0) wager = 0;
+    if (wager > max) wager = max;
+    if (wager > 0 && (await this.wallet.getBalance(userId)) < BigInt(wager)) {
+      socket.emit(MM_EVENTS.error, { message: 'Insufficient balance for this wager' });
+      return null;
+    }
+    return wager;
   }
 
   private notify(matches: PairMatch[]) {
@@ -98,12 +121,14 @@ export class MatchmakingGateway
   @SubscribeMessage(MM_EVENTS.join)
   async onJoin(@ConnectedSocket() socket: Socket, @MessageBody() body: MmJoinPayload) {
     const userId = socket.data.userId as string;
-    await this.mm.enqueue(userId, body.timeControlId);
-    const matches = await this.mm.tryPair(body.timeControlId);
+    const wager = await this.resolveWager(userId, body.wager, socket);
+    if (wager === null) return; // insufficient balance — error already emitted
+    await this.mm.enqueue(userId, body.timeControlId, wager);
+    const matches = await this.mm.tryPair(body.timeControlId, wager);
     this.notify(matches);
     // If this player wasn't paired immediately, the sweep will keep trying.
     if (!matches.some((m) => m.players.includes(userId))) {
-      socket.emit(MM_EVENTS.queued, { timeControlId: body.timeControlId });
+      socket.emit(MM_EVENTS.queued, { timeControlId: body.timeControlId, wager });
     }
   }
 

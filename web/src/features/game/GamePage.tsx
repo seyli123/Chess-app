@@ -17,7 +17,7 @@ interface EndedPayload extends GameState {
 
 export function GamePage() {
   const { id } = useParams<{ id: string }>();
-  const { me } = useAuth();
+  const { me, refresh } = useAuth();
   const navigate = useNavigate();
   const [state, setState] = useState<GameState | null>(null);
   const [ended, setEnded] = useState<EndedPayload | null>(null);
@@ -53,6 +53,12 @@ export function GamePage() {
     const t = setTimeout(() => navigate(`/tournaments/${ended.tournamentId}`), 4000);
     return () => clearTimeout(t);
   }, [ended, me, navigate]);
+
+  // A wagered game settles on end — refresh the nav balance for participants.
+  useEffect(() => {
+    if (!ended || !ended.wager) return;
+    if (me?.id === ended.white.id || me?.id === ended.black.id) void refresh();
+  }, [ended, me, refresh]);
 
   if (!state) return <div className="p-8">Loading game…</div>;
 
@@ -107,6 +113,12 @@ export function GamePage() {
             {state.category} · {Math.floor(state.initialSec / 60)}+{state.incrementSec}
             {state.rated ? ' · Rated' : ' · Casual'}
           </h2>
+
+          {state.wager ? (
+            <p className="mb-2 rounded bg-slate-900 px-2 py-1 text-sm text-amber-300">
+              💰 Wager {state.wager} each · pot {state.wager * 2}
+            </p>
+          ) : null}
 
           {ended ? (
             <div className="space-y-1">

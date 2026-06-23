@@ -5,6 +5,7 @@ import { RedisModule } from './common/redis.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { RatingModule } from './rating/rating.module';
+import { WalletModule } from './wallet/wallet.module';
 import { GameModule } from './game/game.module';
 import { MatchmakingModule } from './matchmaking/matchmaking.module';
 import { TournamentModule } from './tournament/tournament.module';
@@ -18,6 +19,7 @@ import { AppController } from './app.controller';
     AuthModule,
     UsersModule,
     RatingModule,
+    WalletModule,
     GameModule,
     MatchmakingModule,
     TournamentModule,

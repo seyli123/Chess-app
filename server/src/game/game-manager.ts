@@ -13,6 +13,7 @@ import { ChessEngine, type MoveInput } from './engine';
 import { GameClock } from './clock/clock';
 import { GameService } from './game.service';
 import { RatingService } from '../rating/rating.service';
+import { WalletService } from '../wallet/wallet.service';
 
 /** Abort window: if neither player makes a move within this time, abort. */
 const ABORT_MS = 30_000;
@@ -28,6 +29,7 @@ interface ActiveGame {
   incrementSec: number;
   rated: boolean;
   tournamentId?: string;
+  wager: number;
   ply: number;
   status: 'ACTIVE' | 'FINISHED' | 'ABORTED';
   result?: GameResult;
@@ -61,6 +63,7 @@ export class GameManager {
   constructor(
     private readonly gameService: GameService,
     private readonly ratingService: RatingService,
+    private readonly wallet: WalletService,
   ) {}
 
   attachNamespace(ns: Namespace) {
@@ -101,6 +104,7 @@ export class GameManager {
       lastMoveAt: g.lastMoveAt,
       drawOfferFrom: g.drawOfferFrom,
       tournamentId: g.tournamentId,
+      wager: g.wager,
     };
   }
 
@@ -121,8 +125,25 @@ export class GameManager {
     incrementSec: number;
     rated: boolean;
     tournamentId?: string;
+    wager?: number;
   }): Promise<string> {
+    const wager = params.wager ?? 0;
     const row = await this.gameService.createGame(params);
+    // Escrow both stakes before the game goes live. If either player can't
+    // cover it, roll back the game row so nothing half-starts.
+    if (wager > 0) {
+      try {
+        await this.wallet.lockEscrow({
+          gameId: row.id,
+          whiteId: params.whiteId,
+          blackId: params.blackId,
+          amount: BigInt(wager),
+        });
+      } catch (err) {
+        await this.gameService.deleteGame(row.id).catch(() => undefined);
+        throw err;
+      }
+    }
     const [whiteRating, blackRating] = await Promise.all([
       this.ratingService.getOrCreate(params.whiteId, params.category),
       this.ratingService.getOrCreate(params.blackId, params.category),
@@ -149,6 +170,7 @@ export class GameManager {
       incrementSec: params.incrementSec,
       rated: params.rated,
       tournamentId: params.tournamentId,
+      wager,
       ply: 0,
       status: 'ACTIVE',
       lastMoveAt: Date.now(),

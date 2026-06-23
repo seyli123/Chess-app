@@ -11,12 +11,13 @@ function fakeSocket(token: string) {
 
 describe('MatchmakingGateway cleanup', () => {
   const auth = { verifyAccess: jest.fn(async () => 'user1') } as any;
+  const wallet = { getBalance: jest.fn(async () => 1000n) } as any;
   let mm: { enqueue: jest.Mock; tryPair: jest.Mock; leave: jest.Mock };
   let gateway: MatchmakingGateway;
 
   beforeEach(() => {
     mm = { enqueue: jest.fn(), tryPair: jest.fn(async () => []), leave: jest.fn() };
-    gateway = new MatchmakingGateway(mm as any, auth);
+    gateway = new MatchmakingGateway(mm as any, auth, wallet);
   });
 
   it('does not clean up when a stale (replaced) socket disconnects', async () => {

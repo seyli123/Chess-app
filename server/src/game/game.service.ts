@@ -3,6 +3,7 @@ import { Chess } from 'chess.js';
 import { GameResult, Termination, TimeCategory } from '@prisma/client';
 import { PrismaService } from '../common/prisma.service';
 import { RatingService, RatingChange } from '../rating/rating.service';
+import { WalletService } from '../wallet/wallet.service';
 
 const START_FEN = new Chess().fen();
 
@@ -11,6 +12,7 @@ export class GameService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rating: RatingService,
+    private readonly wallet: WalletService,
   ) {}
 
   async createGame(params: {
@@ -21,6 +23,7 @@ export class GameService {
     incrementSec: number;
     rated: boolean;
     tournamentId?: string;
+    wager?: number;
   }) {
     return this.prisma.game.create({
       data: {
@@ -31,10 +34,16 @@ export class GameService {
         incrementSec: params.incrementSec,
         rated: params.rated,
         tournamentId: params.tournamentId ?? null,
+        wagerAmount: BigInt(params.wager ?? 0),
         fen: START_FEN,
       },
       include: { white: true, black: true },
     });
+  }
+
+  /** Remove a never-started game (used to roll back if escrow fails). */
+  async deleteGame(id: string) {
+    await this.prisma.game.delete({ where: { id } });
   }
 
   async recordMove(params: {
@@ -76,6 +85,10 @@ export class GameService {
           endedAt: new Date(),
         },
       });
+
+      // Settle any wager escrow in the same transaction as the result so payout
+      // and result commit together. Aborts/draws refund; decisive games pay out.
+      await this.wallet.settleEscrow(tx, params.gameId, params.result);
 
       if (!params.rated || params.termination === 'ABORTED') return null;
 

@@ -46,10 +46,10 @@ export class UsersService {
   async getMe(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { ratings: true },
+      include: { ratings: true, wallet: true },
     });
     if (!user) throw new NotFoundException('user not found');
-    return this.shape(user);
+    return { ...(await this.shape(user)), balance: user.wallet?.balance ?? 0n };
   }
 
   private async shape(user: {

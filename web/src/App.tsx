@@ -7,6 +7,7 @@ import { ProfilePage } from './features/profile/ProfilePage';
 import { TournamentsPage } from './features/tournament/TournamentsPage';
 import { TournamentPage } from './features/tournament/TournamentPage';
 import { SettingsPage } from './features/settings/SettingsPage';
+import { WalletPage } from './features/wallet/WalletPage';
 
 function Nav() {
   const { me, logout } = useAuth();
@@ -23,6 +24,13 @@ function Nav() {
             </Link>
             <Link to="/tournaments" className="hover:text-emerald-400">
               Tournaments
+            </Link>
+            <Link
+              to="/wallet"
+              className="rounded bg-slate-800 px-2 py-1 font-medium text-amber-300 hover:bg-slate-700"
+              title="Wallet"
+            >
+              💰 {me.balance.toLocaleString()}
             </Link>
             <Link to="/profile" className="hover:text-emerald-400">
               {me.username}
@@ -90,6 +98,14 @@ export default function App() {
           <Route path="/tournaments/:id" element={<TournamentPage />} />
           {/* Settings are client-side prefs — available to everyone. */}
           <Route path="/settings" element={<SettingsPage />} />
+          <Route
+            path="/wallet"
+            element={
+              <Protected>
+                <WalletPage />
+              </Protected>
+            }
+          />
           {/* Game route is public so anyone can spectate. */}
           <Route path="/game/:id" element={<GamePage />} />
         </Routes>
