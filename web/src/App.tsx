@@ -4,6 +4,8 @@ import { AuthPage } from './features/auth/AuthPage';
 import { LobbyPage } from './features/matchmaking/LobbyPage';
 import { GamePage } from './features/game/GamePage';
 import { ProfilePage } from './features/profile/ProfilePage';
+import { TournamentsPage } from './features/tournament/TournamentsPage';
+import { TournamentPage } from './features/tournament/TournamentPage';
 
 function Nav() {
   const { me, logout } = useAuth();
@@ -17,6 +19,9 @@ function Nav() {
           <>
             <Link to="/" className="hover:text-emerald-400">
               Play
+            </Link>
+            <Link to="/tournaments" className="hover:text-emerald-400">
+              Tournaments
             </Link>
             <Link to="/profile" className="hover:text-emerald-400">
               {me.username}
@@ -64,6 +69,16 @@ export default function App() {
               </Protected>
             }
           />
+          <Route
+            path="/tournaments"
+            element={
+              <Protected>
+                <TournamentsPage />
+              </Protected>
+            }
+          />
+          {/* Tournament detail is public so anyone can follow standings. */}
+          <Route path="/tournaments/:id" element={<TournamentPage />} />
           {/* Game route is public so anyone can spectate. */}
           <Route path="/game/:id" element={<GamePage />} />
         </Routes>

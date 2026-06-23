@@ -96,12 +96,17 @@ model Game {
   startedAt    DateTime     @default(now())
   endedAt      DateTime?
 
+  // Set when the game is a pairing inside an arena tournament.
+  tournamentId String?
+  tournament   Tournament? @relation(fields: [tournamentId], references: [id], onDelete: SetNull)
+
   moves  Move[]
   escrow Escrow?
 
   @@index([status])
   @@index([whiteId])
   @@index([blackId])
+  @@index([tournamentId])
 }
 
 enum GameStatus {
@@ -153,8 +158,13 @@ model Tournament {
   startsAt     DateTime
   durationMin  Int
   status       TournamentStatus @default(SCHEDULED)
+  createdById  String?
+  createdAt    DateTime         @default(now())
 
   players TournamentPlayer[]
+  games   Game[]
+
+  @@index([status])
 }
 
 enum TournamentStatus {
@@ -170,9 +180,17 @@ model TournamentPlayer {
   userId       String
   user         User       @relation(fields: [userId], references: [id])
   score        Int        @default(0)
+  // Buchholz-style tiebreak: running sum of opponents' ratings faced.
   performance  Int        @default(0)
+  gamesPlayed  Int        @default(0)
+  // Consecutive-win streak (drives Lichess-style double points) + its peak.
+  streak       Int        @default(0)
+  bestStreak   Int        @default(0)
+  withdrawn    Boolean    @default(false)
+  joinedAt     DateTime   @default(now())
 
   @@unique([tournamentId, userId])
+  @@index([tournamentId])
 }
 
 // ---------------- Wallet & Double-Entry Ledger (reserved) ----------------

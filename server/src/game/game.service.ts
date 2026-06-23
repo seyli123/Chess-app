@@ -20,6 +20,7 @@ export class GameService {
     initialSec: number;
     incrementSec: number;
     rated: boolean;
+    tournamentId?: string;
   }) {
     return this.prisma.game.create({
       data: {
@@ -29,6 +30,7 @@ export class GameService {
         initialSec: params.initialSec,
         incrementSec: params.incrementSec,
         rated: params.rated,
+        tournamentId: params.tournamentId ?? null,
         fen: START_FEN,
       },
       include: { white: true, black: true },

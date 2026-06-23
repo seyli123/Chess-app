@@ -27,6 +27,7 @@ interface ActiveGame {
   initialSec: number;
   incrementSec: number;
   rated: boolean;
+  tournamentId?: string;
   ply: number;
   status: 'ACTIVE' | 'FINISHED' | 'ABORTED';
   result?: GameResult;
@@ -38,10 +39,23 @@ interface ActiveGame {
   abortTimer?: NodeJS.Timeout;
 }
 
+/** Fired once when a game finishes, so subsystems (e.g. tournaments) can react. */
+export interface GameEndInfo {
+  gameId: string;
+  tournamentId?: string;
+  result: GameResult;
+  termination: Termination;
+  whiteId: string;
+  blackId: string;
+}
+
+export type GameEndHook = (info: GameEndInfo) => void;
+
 @Injectable()
 export class GameManager {
   private readonly logger = new Logger(GameManager.name);
   private readonly games = new Map<string, ActiveGame>();
+  private readonly endHooks: GameEndHook[] = [];
   private ns?: Namespace;
 
   constructor(
@@ -51,6 +65,14 @@ export class GameManager {
 
   attachNamespace(ns: Namespace) {
     this.ns = ns;
+  }
+
+  /**
+   * Register a callback invoked after each game finishes. Used by the tournament
+   * engine to score arena pairings without GameManager depending on it.
+   */
+  registerEndHook(hook: GameEndHook) {
+    this.endHooks.push(hook);
   }
 
   private colorOf(g: ActiveGame, userId: string): Color | null {
@@ -78,6 +100,7 @@ export class GameManager {
       termination: g.termination,
       lastMoveAt: g.lastMoveAt,
       drawOfferFrom: g.drawOfferFrom,
+      tournamentId: g.tournamentId,
     };
   }
 
@@ -97,6 +120,7 @@ export class GameManager {
     initialSec: number;
     incrementSec: number;
     rated: boolean;
+    tournamentId?: string;
   }): Promise<string> {
     const row = await this.gameService.createGame(params);
     const [whiteRating, blackRating] = await Promise.all([
@@ -124,6 +148,7 @@ export class GameManager {
       initialSec: params.initialSec,
       incrementSec: params.incrementSec,
       rated: params.rated,
+      tournamentId: params.tournamentId,
       ply: 0,
       status: 'ACTIVE',
       lastMoveAt: Date.now(),
@@ -290,6 +315,25 @@ export class GameManager {
       ...this.buildState(g),
       ratingChange,
     });
+
+    // Notify subsystems (e.g. tournaments) so they can score the result. Hooks
+    // are best-effort and must never break game completion.
+    const info: GameEndInfo = {
+      gameId: g.id,
+      tournamentId: g.tournamentId,
+      result,
+      termination,
+      whiteId: g.white.id,
+      blackId: g.black.id,
+    };
+    for (const hook of this.endHooks) {
+      try {
+        hook(info);
+      } catch (err) {
+        this.logger.error(`Game-end hook failed for ${g.id}: ${String(err)}`);
+      }
+    }
+
     // Keep finished game briefly so late joiners get the final state, then evict.
     setTimeout(() => this.games.delete(g.id), 60_000);
   }

@@ -7,6 +7,7 @@ import { UsersModule } from './users/users.module';
 import { RatingModule } from './rating/rating.module';
 import { GameModule } from './game/game.module';
 import { MatchmakingModule } from './matchmaking/matchmaking.module';
+import { TournamentModule } from './tournament/tournament.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -19,6 +20,7 @@ import { AppController } from './app.controller';
     RatingModule,
     GameModule,
     MatchmakingModule,
+    TournamentModule,
   ],
   controllers: [AppController],
 })

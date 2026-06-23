@@ -33,8 +33,8 @@ chess-app/
 ```
 
 The server modules map 1:1 onto the brief's required separation:
-`auth`, `users`, `game`, `matchmaking`, `rating` — plus `wallet`/`ledger`
-(reserved; see roadmap).
+`auth`, `users`, `game`, `matchmaking`, `rating`, `tournament` — plus
+`wallet`/`ledger` (reserved; see roadmap).
 
 ## Getting started
 
@@ -89,12 +89,35 @@ See [`.env.example`](.env.example). Key ones:
   (`game/clock`), with the client only *rendering* time and the server being the
   single source of truth, including timeout detection.
 - **Real-time** via Socket.IO. A `/game` namespace handles move/resign/draw and
-  spectator streams; a `/matchmaking` namespace handles the quick-pairing queue.
+  spectator streams; a `/matchmaking` namespace handles the quick-pairing queue;
+  a `/tournament` namespace streams live standings and pushes each player their
+  next pairing.
 - **Active game state** lives in an in-process `GameManager` for this slice (one
   API instance). Redis is already wired for the matchmaking queue and is the
   intended home for active-game/clock state when scaling horizontally.
 - **Rating:** Glicko-2, computed per time-control **category** (Bullet / Blitz /
   Rapid) and applied atomically on game completion inside a DB transaction.
+
+### Arena tournaments
+
+Lichess-style arenas run in an in-process `TournamentManager` (the tournament
+analogue of `GameManager`):
+
+- **Lifecycle.** A tournament moves `SCHEDULED → RUNNING → FINISHED` on timers
+  derived from `startsAt` + `durationMin`. Active tournaments are reloaded and
+  re-scheduled from the database on boot.
+- **Continuous pairing.** While running, a sweep (every 3s) pairs *present and
+  idle* entrants — players are sorted by score so similarly-scoring players
+  meet, with immediate rematches avoided. "Present" means the player has the
+  tournament page open (tracked over the `/tournament` socket), so nobody who
+  navigated away gets paired. Finished games free both players back into the
+  pool and the client bounces them between the board and the standings.
+- **Scoring** (`tournament/scoring.ts`, pure + unit-tested): win = 2, draw = 1,
+  loss = 0; once a player has won 2 in a row, each further win scores **double**
+  until they fail to win. Ties break on a Buchholz-style sum of opponents'
+  ratings.
+- **Decoupling.** `GameManager` exposes a game-end hook the tournament engine
+  registers on; game code has no dependency on tournaments.
 
 ## Tokens, fees & the money model
 
@@ -131,8 +154,8 @@ The schema already contains `Wallet`, `LedgerTransaction`, `LedgerEntry`, and
 - [x] Server-authoritative game engine + clocks + Socket.IO
 - [x] Matchmaking (quick pairing by time control + rating range)
 - [x] Glicko-2 rating per category
+- [x] Arena tournaments (Lichess-style scoring + live re-pairing)
 - [ ] Wallet + double-entry ledger (play-money)
 - [ ] Wagering escrow / payout / fee cycle
-- [ ] Arena tournaments
 - [ ] Anti-abuse (collusion, abort/stall, rating manipulation)
 - [ ] Full test suite (heavy on ledger/escrow concurrency)

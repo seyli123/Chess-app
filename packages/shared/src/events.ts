@@ -40,6 +40,8 @@ export interface GameState {
   /** Server timestamp (ms) when this snapshot's clock was last accounted. */
   lastMoveAt: number;
   drawOfferFrom?: Color;
+  /** Set when this game is a pairing inside an arena tournament. */
+  tournamentId?: string;
 }
 
 // ---- Matchmaking namespace (/matchmaking) ----

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import type { Socket } from 'socket.io-client';
 import { GAME_EVENTS, type Color, type GameState } from '@chess/shared';
 import { connect } from '../../lib/socket';
@@ -17,6 +17,7 @@ interface EndedPayload extends GameState {
 export function GamePage() {
   const { id } = useParams<{ id: string }>();
   const { me } = useAuth();
+  const navigate = useNavigate();
   const [state, setState] = useState<GameState | null>(null);
   const [ended, setEnded] = useState<EndedPayload | null>(null);
   const [notice, setNotice] = useState<string>('');
@@ -41,6 +42,16 @@ export function GamePage() {
       socket.disconnect();
     };
   }, [id]);
+
+  // In an arena game, players bounce back to the tournament after it ends so the
+  // engine can pair them again. Only redirect a participant, never a spectator.
+  useEffect(() => {
+    if (!ended?.tournamentId) return;
+    const isPlayer = me?.id === ended.white.id || me?.id === ended.black.id;
+    if (!isPlayer) return;
+    const t = setTimeout(() => navigate(`/tournaments/${ended.tournamentId}`), 4000);
+    return () => clearTimeout(t);
+  }, [ended, me, navigate]);
 
   if (!state) return <div className="p-8">Loading game…</div>;
 
